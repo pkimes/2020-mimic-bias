@@ -1,0 +1,170 @@
+itemid,label,category,value,dbsource,positive_turning_maneuver
+31,Activity,,Dangle,carevue,0
+31,Activity,,,carevue,0
+224084,Activity,Treatments,Commode,metavision,0
+31,Activity,,Comment,carevue,0
+31,Activity,,Lethargic,carevue,0
+31,Activity,,Unassessable,carevue,0
+224084,Activity,Treatments,Bedrest,metavision,0
+224084,Activity,Treatments,Chair,metavision,0
+224084,Activity,Treatments,Bed as Chair,metavision,0
+224084,Activity,Treatments,Ambulate,metavision,0
+31,Activity,,Active,carevue,0
+31,Activity,,Ambulate,carevue,0
+31,Activity,,Bed as Chair,carevue,0
+31,Activity,,Other/Remarks,carevue,0
+31,Activity,,Commode,carevue,0
+31,Activity,,Jittery,carevue,0
+224084,Activity,Treatments,Dangle,metavision,0
+31,Activity,,Bedrest,carevue,0
+31,Activity,,Chair,carevue,0
+916,Allergy 1,,Pronestyl (Oral) (Procainamide Hcl),carevue,0
+927,Allergy 2,,PRONESTYL,carevue,0
+228306,Assistance Device,Treatments,1 Person Assist,metavision,0
+228306,Assistance Device,Treatments,Walker,metavision,0
+228306,Assistance Device,Treatments,Trapeze,metavision,0
+224085,Assistance Device,Treatments,Total Lift,metavision,0
+224085,Assistance Device,Treatments,Slide Board,metavision,0
+224085,Assistance Device,Treatments,Walker,metavision,0
+54,Assistance Device,,1 Person Assist,carevue,0
+54,Assistance Device,,Other/Remarks,carevue,0
+54,Assistance Device,,Walker,carevue,0
+54,Assistance Device,,Cane,carevue,0
+228306,Assistance Device,Treatments,Independent,metavision,0
+228306,Assistance Device,Treatments,Slide Board,metavision,0
+224085,Assistance Device,Treatments,Hoyer,metavision,0
+224085,Assistance Device,Treatments,TLSO Brace,metavision,0
+54,Assistance Device,,Total Lift,carevue,0
+54,Assistance Device,,,carevue,0
+228306,Assistance Device,Treatments,Extremity Brace,metavision,0
+228306,Assistance Device,Treatments,Cane,metavision,0
+224085,Assistance Device,Treatments,2 Person Assist,metavision,0
+54,Assistance Device,,Prosthesis,carevue,0
+54,Assistance Device,,Trapeze,carevue,0
+228306,Assistance Device,Treatments,TLSO Brace,metavision,0
+228306,Assistance Device,Treatments,Prosthesis,metavision,0
+224085,Assistance Device,Treatments,1 Person Assist,metavision,0
+224085,Assistance Device,Treatments,Independent,metavision,0
+224085,Assistance Device,Treatments,Cane,metavision,0
+54,Assistance Device,,2 Person Assist,carevue,0
+54,Assistance Device,,Supervised,carevue,0
+54,Assistance Device,,Wheelchair,carevue,0
+228306,Assistance Device,Treatments,2 Person Assist,metavision,0
+224085,Assistance Device,Treatments,Supervised,metavision,0
+224085,Assistance Device,Treatments,Extremity Brace,metavision,0
+54,Assistance Device,,Independent,carevue,0
+228306,Assistance Device,Treatments,Mechanical Lift,metavision,0
+228306,Assistance Device,Treatments,Wheelchair,metavision,0
+228306,Assistance Device,Treatments,Supervised,metavision,0
+224085,Assistance Device,Treatments,Wheelchair,metavision,0
+224085,Assistance Device,Treatments,Trapeze,metavision,0
+54,Assistance Device,,Hoyer,carevue,0
+54,Assistance Device,,TLSO Brace,carevue,0
+54,Assistance Device,,Slide Board,carevue,0
+54,Assistance Device,,Extremity Brace,carevue,0
+76,Bath,,return,carevue,0
+917,Diagnosis/op,,UNABLE TO STAND,carevue,0
+224079,Education Response,Restraint/Support Systems,Does not understand,metavision,0
+228307,GI #1 Tube Place Check,GI/GU,Bilious returns,metavision,0
+228308,GI #1 Tube Place Method,GI/GU,> 30 mL bilious returns,metavision,0
+228309,GI #2 Tube Place Check,GI/GU,Bilious returns,metavision,0
+228310,GI #2 Tube Place Method,GI/GU,> 30 mL bilious returns,metavision,0
+228311,GI #3 Tube Place Check,GI/GU,Bilious returns,metavision,0
+228312,GI #3 Tube Place Method,GI/GU,> 30 mL bilious returns,metavision,0
+3476,Infant Position,,Prone,carevue,0
+3476,Infant Position,,Supine,carevue,0
+227853,Other (Activity); Specify,OT Notes,max  A,metavision,0
+227853,Other (Activity); Specify,OT Notes,mod A,metavision,0
+227853,Other (Activity); Specify,OT Notes,Contact guarding,metavision,0
+227853,Other (Activity); Specify,OT Notes,Supervision,metavision,0
+227853,Other (Activity); Specify,OT Notes,Independent,metavision,0
+227853,Other (Activity); Specify,OT Notes,min A,metavision,0
+515,Pacemaker Mode,,Pacer Turned Off,carevue,0
+223784,Pain Cause,Pain/Sedation,Movement/Turning,metavision,0
+522,Pain Cause,,Movement/Turning,carevue,0
+228474,Patient Position (Gen Proc),Generic Proc Note,,metavision,0
+224495,Patient position (LP),Lumbar Puncture,,metavision,0
+225245,Patient position (THCEN),Thoracentesis,,metavision,0
+224844,Permanent Pacemaker Mode,Cardiovascular (Pacer Data),Pacer Turned Off,metavision,0
+1844,position,,Proned,carevue,0
+1844,position,,Prone,carevue,0
+224093,Position,Treatments,Left Side,metavision,1
+224093,Position,Treatments,Reverse T-berg,metavision,0
+547,Position,,prone,carevue,0
+547,Position,,RONATED,carevue,0
+1844,position,,supine,carevue,0
+1844,position,,Supine,carevue,0
+1844,position,,PRONE,carevue,0
+224093,Position,Treatments,Supine,metavision,0
+224093,Position,Treatments,Swimmers Position - R,metavision,0
+547,Position,,Right Side,carevue,1
+1844,position,,0.5,carevue,0
+1844,position,,proned,carevue,0
+547,Position,,Supine,carevue,0
+547,Position,,,carevue,0
+224093,Position,Treatments,Right Side,metavision,1
+547,Position,,PRONATE,carevue,0
+224093,Position,Treatments,Rotating,metavision,0
+224093,Position,Treatments,Swimmers Position - L,metavision,0
+547,Position,,PRONE,carevue,0
+547,Position,,SUPINE,carevue,0
+1844,position,,prone,carevue,0
+1844,position,,PRONED,carevue,0
+224093,Position,Treatments,Prone,metavision,0
+547,Position,,Left Side,carevue,1
+547,Position,,Prone,carevue,0
+547,Position,,supine,carevue,0
+227922,Position - Activity - Aerobic Activity Response,OT Notes,Sit,metavision,0
+227922,Position - Activity - Aerobic Activity Response,OT Notes,Stand,metavision,0
+227922,Position - Activity - Aerobic Activity Response,OT Notes,Supine,metavision,0
+227929,Position - Recovery - Aerobic Activity Response,OT Notes,Sit,metavision,0
+227929,Position - Recovery - Aerobic Activity Response,OT Notes,Supine,metavision,0
+227929,Position - Recovery - Aerobic Activity Response,OT Notes,Stand,metavision,0
+227915,Position - Rest - Aerobic Activity Response,OT Notes,Supine,metavision,0
+227915,Position - Rest - Aerobic Activity Response,OT Notes,Sit,metavision,0
+227915,Position - Rest - Aerobic Activity Response,OT Notes,Stand,metavision,0
+3576,Position at Breast,,Cradle,carevue,0
+3576,Position at Breast,,Football,carevue,0
+3576,Position at Breast,,,carevue,0
+3576,Position at Breast,,Comment,carevue,0
+224066,Position Change,Restraint/Support Systems,Not Done,metavision,0
+227952,Position Change,Restraint/Support Systems,Not Done,metavision,0
+548,Position Change,,Not Done,carevue,0
+227952,Position Change,Restraint/Support Systems,Done,metavision,0
+548,Position Change,,Other,carevue,0
+224066,Position Change,Restraint/Support Systems,Done,metavision,0
+548,Position Change,,Done,carevue,0
+548,Position Change,,,carevue,0
+5374,position rotated 180,,rotated,carevue,0
+5374,position rotated 180,,Done,carevue,0
+5374,position rotated 180,,yes,carevue,0
+5374,position rotated 180,,,carevue,0
+5374,position rotated 180,,done,carevue,0
+224088,Pressure Reducing Device,Treatments,Footboard/Cradle,metavision,0
+579,PressureReduceDevice,,FootBoard/Cradle,carevue,0
+5999,prone/supine,,prone,carevue,0
+5999,prone/supine,,supine,carevue,0
+8083,proning via bed.,,supine,carevue,0
+8083,proning via bed.,,prone,carevue,0
+623,Restraints Evaluated,,BehaviorReturned,carevue,0
+224068,Restraints Evaluated_V1,Restraint/Support Systems,Behavior Returned,metavision,0
+223956,Temporary Pacemaker Mode,Cardiovascular (Pacer Data),Pacer Turned Off,metavision,0
+680,Therapeutic Bed,,Rotoprone Therap,carevue,0
+224087,Therapeutic Bed,Treatments,RotoProne,metavision,0
+224082,Turn,Treatments,Turns by Self,metavision,0
+704,Turn,,Side to Side,carevue,1
+704,Turn,,Logroll x4assist,carevue,0
+224082,Turn,Treatments,Logroll x4 Assist,metavision,0
+704,Turn,,Back,carevue,1
+704,Turn,,,carevue,0
+224082,Turn,Treatments,Side to Side,metavision,1
+704,Turn,,Logroll,carevue,0
+224082,Turn,Treatments,Right Side,metavision,1
+224082,Turn,Treatments,Back,metavision,1
+224082,Turn,Treatments,Left Side,metavision,1
+704,Turn,,Turns by self,carevue,0
+224082,Turn,Treatments,Logroll,metavision,0
+224082,Turn,Treatments,Prone,metavision,0
+704,Turn,,Left Side,carevue,1
+704,Turn,,Right Side,carevue,1
+704,Turn,,Proned,carevue,0

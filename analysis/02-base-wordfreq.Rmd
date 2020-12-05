@@ -1,0 +1,549 @@
+---
+title: "High-level Analysis of Cohort"
+author: "Patrick Kimes"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+# Outline
+
+Here we do simple word frequencies.
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(cowplot)
+library(bigrquery)
+library(ggbeeswarm)
+library(stringr)
+
+theme_set(theme_minimal())
+theme_x_rotate <- function(...) {
+    theme(axis.text.x = element_text(angle = 90, vjust = 1/2, hjust = 1), ...)
+}
+
+## bigrquery issue: https://github.com/r-dbi/bigrquery/issues/395
+options(scipen = 20)
+options(dplyr.summarise.inform = FALSE)
+```
+
+We will be querying from the same project and dataset on BigQuery.
+
+```{r}
+project <- "hst-953-2019"
+bq_auth(email = "patrick.kimes@gmail.com")
+```
+
+Data tables will be saved to a local directory for easier future access.
+
+```{r}
+bqdir <- file.path("..", "data", "bigquery")
+dir.create(bqdir, showWarnings = FALSE, recursive = TRUE)
+```
+
+# Data
+
+## Cohort
+
+First, we will download our cohort table.
+
+```{r}
+cohort_rds <- file.path(bqdir, "cohort.rds")
+if (file.exists(cohort_rds)) {
+    cohort <- readRDS(cohort_rds)
+} else {
+    bq_tab_cohort <- "hst-953-2019.bias2020.notes_by_weight"
+    cohort <- bq_table_download(bq_tab_cohort, page_size = 1e3)
+    saveRDS(cohort, file = cohort_rds)
+}
+```
+
+## Cohort Metadata
+
+Also read in some additional metadata for each admission, namely
+the length of stay.
+
+```{r}
+cohortmeta_rds <- file.path(bqdir, "cohortmeta.rds")
+if (file.exists(cohortmeta_rds)) {
+    cohortmeta <- readRDS(cohortmeta_rds)
+} else {
+    query <- paste("SELECT * ",
+                   "FROM (",
+                   "  SELECT DISTINCT HADM_ID, SUBJECT_ID, GENDER, AGE, WEIGHT_MAX, HEIGHT_MAX",
+                   "  FROM `hst-953-2019.bias2020.notes_by_weight`",
+                   ")",
+                   "LEFT JOIN (",
+                   "  SELECT HADM_ID, SUBJECT_ID, ADMITTIME, DISCHTIME, HOSPITAL_EXPIRE_FLAG",
+                   "  FROM `physionet-data.mimiciii_clinical.admissions`",
+                   ")",
+                   "USING (HADM_ID, SUBJECT_ID)")
+    cm <- bq_project_query(x = "hst-953-2019", query = query)
+    cohortmeta <- bq_table_download(cm)
+    saveRDS(cohortmeta, cohortmeta_rds)
+}
+```
+
+Determine the length of stay for each admission.
+
+```{r}
+cohortmeta <- cohortmeta %>%
+    dplyr::mutate(LOS = lubridate::time_length(DISCHTIME - ADMITTIME,
+                                               unit = "days")) %>%
+    dplyr::select(-ADMITTIME, -DISCHTIME)
+```
+
+We filter this cohort to only patients over 18.
+
+```{r}
+cohortmeta <- cohortmeta %>%
+    dplyr::filter(AGE > 18)
+```
+
+Check for negative lengths of stay.
+
+```{r}
+cohortmeta %>%
+    dplyr::arrange(LOS) %>% 
+    dplyr::select(-HEIGHT_MAX) %>%
+    print(n = 20)
+```
+
+A lot of these short visits are patients who died during the stay. 
+All patients with negative lengths of stay expired in the hospital. 
+We will exclude these patients.
+
+```{r}
+cohortmeta <- cohortmeta %>%
+    dplyr::filter(LOS > 0)
+```
+
+## Keywords
+
+We also read in our keywords of interest.
+
+```{r}
+kw_file <- file.path("..", "data", "curated",
+                     "keywords_with_category_1106.csv")
+kwords <- read_csv(kw_file, col_types = "ci")
+kwords <- dplyr::rename(kwords, category = keywords_nominal_category)
+```
+
+Count up categories.
+
+```{r}
+kwords %>%
+    dplyr::group_by(category) %>%
+    dplyr::summarize(n = n(), example = keywords[1])
+```
+
+Some words are duplicated across categories.
+This is a bit of a pain. We can talk to others about this later.
+
+```{r}
+kwords %>%
+    dplyr::filter(keywords %in%
+                  kwords$keywords[duplicated(kwords$keywords)]) %>%
+    dplyr::arrange(keywords, category) %>%
+    dplyr::group_by(keywords) %>%
+    dplyr::summarize(category = paste0(category, collapse = ",")) %>%
+    print(n = 100)
+```
+
+We're going to collapse this by unique keywords.
+
+```{r}
+kwords <- kwords %>%
+    dplyr::group_by(keywords) %>%
+    dplyr::summarize(category = list(category)) %>%
+    dplyr::ungroup()
+```
+
+Also clean up category labels.
+
+```{r}
+kword_catlabs <- kwords %>%
+    tidyr::unnest(category) %>%
+    dplyr::left_join(dplyr::count(kwordsum_count,
+                                  keywords, wt = n),
+                     by = "keywords") %>%
+    dplyr::group_by(category) %>%
+    dplyr::slice_max(n, n = 5) %>%
+    dplyr::arrange(desc(n)) %>%
+    dplyr::summarize(top5kws = paste(keywords, collapse = "; ")) %>%
+    dplyr::mutate(top5kws = paste0("category ", category, "\n",
+                                   "(e.g. ", top5kws, ")"))
+```
+
+# Word Frequencies
+
+Count word frequencies in notes.
+
+```{r}
+secdir <- file.path("..", "data", "secondary")
+dir.create(secdir, showWarnings = FALSE)
+
+if (file.exists(file.path(secdir, "keyword_counts2.rds"))) {
+    kword_count <- readRDS(file.path(secdir, "keyword_counts2.rds"))
+} else {
+    kword_count <- lapply(paste0("\\W", kwords$keywords, "\\W"), str_count,
+                          string = cohort$TEXT)
+    names(kword_count) <- kwords$keywords
+    kword_count <- bind_cols(kword_count)
+    kword_count <- dplyr::bind_cols(kword_count,
+                                    dplyr::select(cohort, CGID, HADM_ID, SUBJECT_ID,
+                                                  ROW_ID, CATEGORY))
+    saveRDS(kword_count, file.path(secdir, "keyword_counts2.rds"))
+}
+```
+
+For now, collapse by admission (note that this groups and collapses across 
+admission note categories - e.g. "Nursing" vs. "Nursing/other").
+
+```{r}
+if (file.exists(file.path(secdir, "keyword_counts_byadmission2.rds"))) {
+    kwordsum_count <- readRDS(file.path(secdir, "keyword_counts_byadmission2.rds"))
+} else {
+    kwordsum_count <- kword_count %>%
+        dplyr::select(-CGID, -ROW_ID, -CATEGORY) %>%
+        dplyr::group_by(HADM_ID, SUBJECT_ID) %>%
+        summarise_at(vars(-group_cols()), sum) %>%
+        dplyr::ungroup()
+    saveRDS(kwordsum_count,
+            file.path(secdir, "keyword_counts_byadmission2.rds"))
+}
+```
+
+Make long.
+
+```{r}
+kwordsum_count <- kwordsum_count %>%
+    tidyr::pivot_longer(-c(HADM_ID, SUBJECT_ID),
+                        names_to = "keywords", values_to = "n")
+```
+
+Also, collapse by keyword category. 
+
+```{r}
+kcatsum_count <- kwordsum_count %>%
+    dplyr::left_join(kwords, by = "keywords") %>%
+    tidyr::unnest(category) %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, category, wt = n)
+```
+
+Additional information. We compute length of each note (word counts) as
+well as number of notes. We count the length of notes in two ways, either
+using the "word" (either any non-space sequence, `\\S+`, 
+or any word character sequence, `\\w+`). 
+
+```{r}
+word_count <- cohort %>%
+    dplyr::select(HADM_ID, SUBJECT_ID, TEXT) %>%
+    dplyr::mutate(nwords1 = str_count(TEXT, "\\S+"),
+                  nwords2 = str_count(TEXT, '\\w+')) %>%
+    dplyr::select(-TEXT) %>%
+    dplyr::group_by(HADM_ID, SUBJECT_ID) %>%
+    dplyr::summarize(nwords1 = sum(nwords1),
+                     nwords2 = sum(nwords2),
+                     nnotes = n()) %>%
+    dplyr::ungroup()
+```
+
+We can add this to the count tables.
+
+```{r}
+kwordsum_count <- kwordsum_count %>%
+    dplyr::left_join(word_count, by = c("HADM_ID", "SUBJECT_ID"))
+
+kcatsum_count <- kcatsum_count %>%
+    dplyr::left_join(word_count, by = c("HADM_ID", "SUBJECT_ID"))
+```
+
+We also add the cohort metadata to these counts and subset to 
+admissions filtered in based on metadata criteria (AGE>18, LOS>0).
+
+```{r}
+kwordsum_count <- kwordsum_count %>%
+    dplyr::inner_join(cohortmeta, by = c("HADM_ID", "SUBJECT_ID"))
+
+kcatsum_count <- kcatsum_count %>%
+    dplyr::inner_join(cohortmeta, by = c("HADM_ID", "SUBJECT_ID"))
+```
+
+# Analysis
+
+Note that a lot of these notes include some structure, i.e. sections with headings, and
+we are completely ignoring this information for this analysis.
+
+## Univariate Analyses
+
+Check length of notes.
+
+```{r, fig.width = 7, fig.height = 3}
+gp <- word_count %>%
+    ggplot(aes(x = nwords2)) +
+    geom_histogram(boundary = 0, binwidth = 50, color = 'black') +
+    xlab("number of words") +
+    ggtitle("Distribution of total note lengths by admission")
+gp
+gp + coord_cartesian(xlim = c(0, 5000))
+```
+
+May want to exclude admissions with incredibly short notes and 
+admissions with incredibly long set of notes.
+
+```{r, fig.width = 5, fig.height = 4}
+word_count %>%
+    ggplot(aes(x = nnotes, y = nwords2)) +
+    geom_point(alpha = 1/2) +
+    ggtitle("Number of notes and length by admission") +
+    xlab("number of notes") +
+    ylab("number of words")
+```
+
+Some admissions have an incredibly large number of notes (and words).
+Check if this is associated with length of stay.
+
+```{r, fig.width = 5, fig.height = 4}
+gp <- dplyr::inner_join(word_count, cohortmeta,
+                  by = c("HADM_ID", "SUBJECT_ID")) %>%
+    dplyr::filter(WEIGHT_MAX < 500) %>%
+    ggplot(aes(x = LOS, y = nnotes)) +
+    geom_point(alpha = 1/4) +
+    ggtitle("Number of notes and length of stay") +
+    xlab("length of stay (days)") +
+    ylab("number of notes")
+gp
+
+gp +
+    coord_cartesian(xlim = c(0, 100),
+                    ylim = c(0, 200))
+```
+
+Generally looks like 2 notes per day.
+
+```{r, fig.width = 6, fig.height = 3}
+gp <- dplyr::inner_join(word_count, cohortmeta,
+                  by = c("HADM_ID", "SUBJECT_ID")) %>%
+    dplyr::filter(WEIGHT_MAX < 500) %>%
+    dplyr::mutate(npd = nnotes / LOS) %>%
+    ggplot(aes(x = npd)) +
+    geom_histogram(boundary = 0, binwidth = .1, color = 'black') + 
+    ggtitle("Rate of note taking by admission") +
+    scale_x_continuous("notes per day", breaks = seq(0, 1000, 5)) +
+    ylab("number of admissions")
+gp
+
+gp %+% dplyr::filter(gp$data, LOS > 1) +
+    ggtitle("Rate of note taking by admission (LOS > 1 day)") +
+    scale_x_continuous("notes per day", breaks = seq(0, 1000, by = 4))
+
+gp %+% dplyr::filter(gp$data, LOS > 5) +
+    ggtitle("Rate of note taking by admission (LOS > 5 days)") +
+    scale_x_continuous("notes per day", breaks = seq(0, 1000, by = 2))
+
+gp %+% dplyr::filter(gp$data, LOS > 10) +
+    ggtitle("Rate of note taking by admission (LOS > 10 days)") +
+    scale_x_continuous("notes per day", breaks = seq(0, 1000, by = 2))
+```
+
+Most patients get 0 to 3 notes per day.
+
+Check if note length at all associated with patient weight at admission.
+(Likely since weight and LOS show some association.)
+
+```{r, fig.width = 5, fig.height = 3.5}
+dplyr::inner_join(word_count, cohortmeta,
+                  by = c("HADM_ID", "SUBJECT_ID")) %>%
+    dplyr::filter(WEIGHT_MAX < 500) %>%
+    ggplot(aes(x = WEIGHT_MAX, y = nwords2)) +
+    geom_point(alpha = 1/2) +
+    ggtitle("Weight against note length by admission") +
+    xlab("max weight (kg)") +
+    ylab("length of notes")
+```
+
+Look at distribution of word frequencies. 
+
+```{r, fig.width = 15, fig.height = 4}
+kwordsum_count %>%
+    dplyr::mutate(Present = if_else(n > 0, "Yes", "No"),
+                  keywords = reorder(keywords, n,
+                                     FUN = function(x) { -mean(x > 0) })) %>%
+    ggplot(aes(x = keywords, fill = Present)) +
+    geom_bar(color = 'black', position = 'fill') +
+    scale_y_continuous("% of admissions",
+                       expand = c(0, 0), labels = scales::percent,
+                       breaks = seq(0, 1, .2)) +
+    scale_fill_brewer(palette = "Set1", direction = 1) +
+    theme_x_rotate() +
+    ggtitle("Admissions containing word at least once",
+            "pooled over all notes per admission")
+```
+
+Check what the top words were.
+
+```{r, fig.width = 8, fig.height = 4}
+kwordsum_count %>%
+    dplyr::mutate(Present = if_else(n > 0, "Yes", "No"),
+                  keywords = reorder(keywords, n,
+                                     FUN = function(x) { -mean(x > 0) })) %>%
+    tidyr::nest(data = -keywords) %>%
+    dplyr::slice_min(keywords, n = 50) %>%
+    tidyr::unnest(data) %>%
+    ggplot(aes(x = keywords, fill = Present)) +
+    geom_bar(color = 'black', position = 'fill') +
+    scale_y_continuous("% of admissions",
+                       expand = c(0, 0), labels = scales::percent,
+                       breaks = seq(0, 1, .2)) +
+    scale_fill_brewer(palette = "Set1", direction = 1) +
+    theme_x_rotate() +
+    ggtitle("Admissions containing word at least once",
+            "pooled over all notes per admission (top 50)")
+```
+
+Also look at word categories.
+
+```{r, fig.width = 8, fig.height = 6}
+gp <- kcatsum_count %>%
+    dplyr::left_join(kword_catlabs, by = "category") %>%
+    dplyr::select(-category) %>%
+    dplyr::rename(category = top5kws) %>%
+    dplyr::mutate(Present = if_else(n > 0, "Yes", "No"),
+                  category = reorder(category, n,
+                                     FUN = function(x) { -mean(x > 0) })) %>%
+    ggplot(aes(x = category, fill = Present)) +
+    geom_bar(color = 'black', position = 'fill') +
+    scale_y_continuous("% of admissions",
+                       expand = c(0, 0), labels = scales::percent,
+                       breaks = seq(0, 1, .2)) +
+    xlab(NULL) + 
+    scale_fill_brewer(palette = "Set1", direction = 1) +
+    theme_x_rotate() +
+    ggtitle("Admissions containing word at least once",
+            "pooled over all notes per admission")
+gp
+```
+
+```{r, fig.width = 8, fig.height = 5}
+gp + coord_flip()
+```
+
+Can revisit the top words and add category labels.
+
+```{r, fig.width = 8, fig.height = 5}
+kwordsum_count %>%
+    dplyr::left_join(dplyr::mutate(kwords,
+                                   category = sapply(category, paste, collapse = ","),
+                                   category = paste0(keywords, " (category ", category, ")")),
+                     by = "keywords") %>%
+    dplyr::select(-keywords) %>%
+    dplyr::mutate(Present = if_else(n > 0, "Yes", "No"),
+                  category = reorder(category, n,
+                                     FUN = function(x) { -mean(x > 0) })) %>%
+    tidyr::nest(data = -category) %>%
+    dplyr::slice_min(category, n = 50) %>%
+    tidyr::unnest(data) %>%
+    ggplot(aes(x = category, fill = Present)) +
+    geom_bar(color = 'black', position = 'fill') +
+    scale_y_continuous(expand = c(0, 0), labels = scales::percent,
+                       breaks = seq(0, 1, .2)) +
+    xlab(NULL) + 
+    scale_fill_brewer(palette = "Set1", direction = 1) +
+    theme_x_rotate() +
+    ggtitle("Admissions containing word at least once",
+            "pooled over all notes per admission (top 50)")
+```
+
+We may want to think more about how we filter patients/admissions included in 
+our analysis cohort.
+
+1. filter out admissions with patient < 18yo at admission
+2. filter out admissions with LOS < 0 days
+3. (?) filter out admissions with short / long stays (>1 day?; <X days?)
+4. (?) filter out admissions with short / long notes (may be same as above?)
+
+
+## Differential Analysis
+
+Can compare the presence of words based on patient weight.
+
+First add patient weight categories to table.
+
+```{r}
+kwordsum_tab <- kwordsum_count %>%
+    dplyr::filter((WEIGHT_MAX > 136) | (WEIGHT_MAX < 80),
+                  WEIGHT_MAX < 500) %>%
+    dplyr::mutate(weight = factor(if_else(WEIGHT_MAX < 150,
+                                          "low (<80kg)", "high (>136kg)")),
+                  present = if_else(n > 0, "Yes", "No"),
+                  nper1000 = n / nwords2 * 1000) %>%
+    dplyr::select(weight, GENDER, AGE, n, nwords2,
+                  present, nper1000, keywords) %>%
+    dplyr::rename_all(tolower)
+
+kcatsum_tab <- kcatsum_count %>%
+    dplyr::filter((WEIGHT_MAX > 136) | (WEIGHT_MAX < 80),
+                  WEIGHT_MAX < 500) %>%
+    dplyr::mutate(weight = factor(if_else(WEIGHT_MAX < 150,
+                                          "low (<80kg)", "high (>136kg)")),
+                  present = if_else(n > 0, "Yes", "No"),
+                  nper1000 = n / nwords2 * 1000) %>%
+    dplyr::left_join(kword_catlabs, by = "category") %>%
+    dplyr::mutate(top5kws = reorder(top5kws, nper1000,
+                                    FUN = function(x) { -mean(x > 0) })) %>%
+    dplyr::select(weight, GENDER, AGE, LOS, nnotes, n, nwords2,
+                  present, nper1000, category = top5kws) %>%
+    dplyr::rename_all(tolower)
+```
+
+Now look at data.
+
+```{r, fig.width = 9, fig.height = 4}
+kcatsum_tab %>%
+    ggplot(aes(x = category, y = nper1000, color = weight)) +
+    geom_boxplot() +
+    rcartocolor::scale_color_carto_d("Weight Group", palette = "Bold") +
+    xlab("word category") + 
+    ylab("frequency per 1000 words") +
+    coord_flip() +
+    ggtitle("Word frequency by weight across categories")
+```
+
+```{r, fig.width = 6, fig.height = 7}
+kcatsum_tab %>%
+    ggplot(aes(x = weight, fill = present)) +
+    geom_bar(position = "fill", color = 'black') +
+    scale_y_continuous("% of admissions",
+                       expand = c(0, 0), labels = scales::percent,
+                       breaks = seq(0, 1, .2)) +
+    scale_fill_manual(values = c("gray90", "gray20")) +
+    xlab(NULL) + 
+    facet_wrap(~ category, ncol = 1) + 
+    coord_flip() +
+    ggtitle("Word presence in notes by weight across categories")
+
+kcatsum_tab %>%
+    ggplot(aes(x = weight, fill = present)) +
+    geom_bar(position = "stack", color = 'black') +
+    scale_y_continuous("admissions", expand = c(0, 0)) + 
+    scale_fill_manual(values = c("gray90", "gray20")) +
+    xlab(NULL) + 
+    facet_wrap(~ category, ncol = 1) + 
+    coord_flip() +
+    ggtitle("Word presence in notes by weight across categories")
+
+kcatsum_tab %>%
+    dplyr::group_by(category) %>%
+    dplyr::do(test = fisher.test(.$present, .$weight)) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(pval = sapply(test, `[[`, "p.value"),
+                  OR = sapply(test, `[[`, "estimate")) %>%
+    dplyr::arrange(pval) %>%
+    dplyr::select(-test)
+```
+
+All categories are higher in heavy weight group. 

@@ -1,0 +1,619 @@
+---
+title: "High-level Analysis of Cohort"
+author: "Patrick Kimes"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+# Outline
+
+Here we try out doing an analysis.
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(cowplot)
+library(bigrquery)
+library(ggbeeswarm)
+
+theme_set(theme_minimal())
+theme_x_rotate <- function(...) {
+    theme(axis.text.x = element_text(angle = 90, vjust = 1/2, hjust = 1), ...)
+}
+
+## bigrquery issue: https://github.com/r-dbi/bigrquery/issues/395
+options(scipen = 20)
+```
+
+We will be querying from the same project and dataset on BigQuery.
+
+```{r}
+project <- "hst-953-2019"
+bq_auth(email = "patrick.kimes@gmail.com")
+```
+
+Data tables will be saved to a local directory for easier future access.
+
+```{r}
+bqdir <- file.path("..", "data", "bigquery")
+dir.create(bqdir, showWarnings = FALSE, recursive = TRUE)
+```
+
+# Data
+
+## Cohort
+
+First, we will download our cohort table.
+
+```{r, eval = FALSE}
+cohort_rds <- file.path(bqdir, "cohort.rds")
+if (file.exists(cohort_rds)) {
+    cohort <- readRDS(cohort_rds)
+} else {
+    bq_tab_cohort <- "hst-953-2019.bias2020.notes_by_weight"
+    cohort <- bq_table_download(bq_tab_cohort, page_size = 1e3)
+    saveRDS(cohort, file = cohort_rds)
+}
+cohort <- cohort %>%
+    dplyr::distinct(HADM_ID, SUBJECT_ID, GENDER, DOB,
+                    WEIGHT_MAX, HEIGHT_MAX, AGE)
+```
+
+We don't care about notes, so we'll flatten this table and also obtain the
+length of stay for each admission.
+
+```{r}
+cohortmeta_rds <- file.path(bqdir, "cohortmeta.rds")
+if (file.exists(cohortmeta_rds)) {
+    cohortmeta <- readRDS(cohortmeta_rds)
+} else {
+    query <- paste("SELECT * ",
+                   "FROM (",
+                   "  SELECT DISTINCT HADM_ID, SUBJECT_ID, GENDER, AGE, WEIGHT_MAX, HEIGHT_MAX",
+                   "  FROM `hst-953-2019.bias2020.notes_by_weight`",
+                   ")",
+                   "LEFT JOIN (",
+                   "  SELECT HADM_ID, SUBJECT_ID, ADMITTIME, DISCHTIME, HOSPITAL_EXPIRE_FLAG",
+                   "  FROM `physionet-data.mimiciii_clinical.admissions`",
+                   ")",
+                   "USING (HADM_ID, SUBJECT_ID)")
+    cm <- bq_project_query(x = "hst-953-2019", query = query)
+    cohortmeta <- bq_table_download(cm)
+    saveRDS(cohortmeta, cohortmeta_rds)
+}
+```
+
+Determine the length of stay for each admission.
+
+```{r}
+cohortmeta <- cohortmeta %>%
+    dplyr::mutate(LOS = lubridate::time_length(DISCHTIME - ADMITTIME,
+                                               unit = "days")) %>%
+    dplyr::select(-ADMITTIME, -DISCHTIME)
+```
+
+We filter this cohort to only patients over 18.
+
+```{r}
+cohortmeta <- cohortmeta %>%
+    dplyr::filter(AGE > 18)
+```
+
+Check for negative lengths of stay.
+
+```{r}
+cohortmeta %>%
+    dplyr::arrange(LOS) %>% 
+    dplyr::select(-HEIGHT_MAX) %>%
+    print(n = 20)
+```
+
+A lot of these short visits are patients who died during the stay. 
+
+```{r, fig.width = 6, fig.heigth = 3}
+gp <- cohortmeta %>%
+    dplyr::mutate(HOSPITAL_EXPIRE_FLAG =
+                      dplyr::recode(HOSPITAL_EXPIRE_FLAG, "1" = "Yes (1)", "0" = "No (0)")) %>%
+    ggplot(aes(x = HOSPITAL_EXPIRE_FLAG, y = LOS)) +
+    geom_quasirandom(varwidth = TRUE, alpha = 1/2, size = 1) +
+    ylab("Length of stay (days)")
+gp + coord_flip()
+
+gp + coord_flip(ylim = c(-5, 20))
+```
+
+All patients with negative lengths of stay expired in the hospital. We will exclude these patients.
+
+```{r}
+cohortmeta <- cohortmeta %>%
+    dplyr::filter(LOS > 0)
+```
+
+## Turning
+
+The following query is used to identify all potential turning events item IDs.
+
+```{r, eval = FALSE}
+## query <- paste("SELECT DISTINCT d.itemid, d.label, d.category, c.value, d.dbsource",
+##                "FROM `physionet-data.mimiciii_clinical.d_items` d",
+##                "LEFT JOIN `physionet-data.mimiciii_clinical.chartevents` c",
+##                "ON d.itemid = c.itemid",
+##                "WHERE", 
+##                'lower(d.label) like "position%"',
+##                'OR lower(d.label) like "patient position%"',
+##                'OR lower(d.label) like "turn%"',
+##                'OR lower(d.label) like "activity"',
+##                'OR lower(d.label) like "assistance device"',
+##                'OR lower(d.label) like "other (activity)%"',
+##                'OR lower(c.value) like "%turn%"',
+##                'OR lower(c.value) like "%supine%"',
+##                'OR lower(c.value) like "%prone%"',
+##                'OR lower(c.value) like "%cradle%"',
+##                'OR lower(c.value) like "%stand"',
+##                'OR lower(c.value) like "%side to side%"',
+##                'OR lower(c.value) like "left side"',
+##                'OR lower(c.value) like "right side"',
+##                'OR lower(c.value) like "bedrest"')
+## tb <- bq_project_query(x = "hst-953-2019", query = query)
+## labs <- bq_table_download(tb)
+```
+
+A manually curated set of this list is available from Ken.
+
+```{r}
+labs <- read_csv(file.path("..", "data", "bigquery-annotated",
+                           "patient_itemids_positive_turning_maneuver_1107.csv"),
+                 col_types = cols())
+labs <- dplyr::filter(labs, positive_turning_maneuver == 1)
+labs <- dplyr::select(labs, -positive_turning_maneuver)
+```
+
+Query in `charevents` table.
+
+```{r}
+turnevents_rds <- file.path(bqdir, "turnevents.rds")
+if (file.exists(turnevents_rds)) {
+    turnevents <- readRDS(turnevents_rds)
+} else {
+    query <- paste("SELECT * ",
+                   "FROM `physionet-data.mimiciii_clinical.chartevents` ",
+                   "INNER JOIN (",
+                   "  SELECT *",
+                   "  FROM `hst-953-2019.bias2020.turning_itemids`",
+                   "  WHERE positive_turning_maneuver = 1",
+                   ") ",
+                   "USING (itemid, value)")
+    te <- bq_project_query(x = "hst-953-2019", query = query)
+    turnevents <- bq_table_download(te)
+    saveRDS(turnevents, turnevents_rds)
+}
+```
+
+Flatten event counts to unique hospital admission IDs (`HADM_ID`s) since this
+is how we will analyze notes.
+
+```{r}
+turncounts <- turnevents %>%
+    dplyr::count(SUBJECT_ID, HADM_ID,
+                 ITEMID = itemid, VALUE = value, LABEL = label)
+```
+
+Combine cohort metadata and turning event counts. 
+
+```{r}
+cohortturns <- cohortmeta %>%
+    dplyr::left_join(turncounts, by = c("SUBJECT_ID", "HADM_ID"))
+```
+
+Fill in all zeros.
+
+```{r}
+cohortturns <- cohortturns %>%
+    tidyr::complete(tidyr::nesting(HADM_ID, SUBJECT_ID, GENDER, AGE,
+                                   WEIGHT_MAX, HEIGHT_MAX,
+                                   HOSPITAL_EXPIRE_FLAG, LOS),
+                    tidyr::nesting(ITEMID, VALUE, LABEL),
+                    fill = list(n = 0L)) %>%
+    dplyr::filter(!is.na(ITEMID))
+```
+
+
+# First Order
+
+First, just do some simple counting.
+
+```{r, fig.width = 6.5, fig.height = 3}
+## check number of admissions
+cohortmeta %>%
+    dplyr::count(SUBJECT_ID) %>%
+    ggplot(aes(x = n)) +
+    geom_bar(color = 'black', fill = 'gray') +
+    scale_x_continuous("number of admissions", breaks = 1:100) +
+    ylab("number of subjects") +
+    ggtitle("Distribution of hospital admissions by subjects")
+
+## check number of admissions
+cohortmeta %>%
+    dplyr::count(SUBJECT_ID, GENDER) %>%
+    ggplot(aes(x = n, fill = GENDER)) +
+    geom_bar(color = 'black', position = 'dodge') +
+    scale_x_continuous("number of admissions", breaks = 1:100) +
+    ylab("number of subjects") +
+    ggtitle("Distribution of hospital admissions by subjects")
+
+## check distribution of weights
+cohortmeta %>%
+    ggplot(aes(x = WEIGHT_MAX)) +
+    geom_histogram(boundary = 0, binwidth = 10, color = 'black', fill = 'gray') +
+    xlab("max weight during admission (KG)") +
+    ylab("number of admissions") +
+    ggtitle("Distribution of max weights by hospital admissions")
+
+cohortmeta %>%
+    ggplot(aes(x = WEIGHT_MAX, fill = GENDER)) +
+    geom_histogram(boundary = 0, binwidth = 10, color = 'black', position = 'dodge') +
+    xlab("max weight during admission (KG)") +
+    ylab("number of admissions") +
+    ggtitle("Distribution of max weights by hospital admissions (by gender)")
+
+## check distribution of weights
+cohortmeta %>%
+    dplyr::group_by(SUBJECT_ID) %>%
+    dplyr::summarize(WEIGHT_MAX = max(WEIGHT_MAX, na.rm = TRUE)) %>%
+    dplyr::ungroup() %>%
+    ggplot(aes(x = WEIGHT_MAX)) +
+    geom_histogram(boundary = 0, binwidth = 10, color = 'black', fill = 'gray') +
+    xlab("max weight during all admissions (KG)") +
+    ylab("number of unique subjects") +
+    ggtitle("Distribution of max weights by subjects")
+
+## check distribution of ages
+cohortmeta %>%
+    ggplot(aes(x = AGE)) +
+    geom_histogram(boundary = 0, binwidth = 1, color = 'black', fill = 'gray') +
+    xlab("age at admission") +
+    ylab("number of admissions") +
+    ggtitle("Distribution of age by hospital admissions")
+
+## check distribution of ages
+cohortmeta %>%
+    dplyr::mutate(AGE = pmin(AGE, 90)) %>%
+    ggplot(aes(x = AGE)) +
+    geom_histogram(boundary = 0, binwidth = 1, color = 'black', fill = 'gray') +
+    scale_x_continuous("age at admission", breaks = seq(0, 1000, 5)) +
+    ylab("number of admissions") +
+    ggtitle("Distribution of age by hospital admissions")
+
+## check distribution of genders
+cohortmeta %>%
+    ggplot(aes(x = GENDER)) +
+    geom_bar(color = 'black', fill = 'gray') +
+    ylab("number of admissions") +
+    ggtitle("Distribution of genders by hospital admissions") +
+    coord_flip()
+
+## check distribution of genders
+cohortmeta %>%
+    dplyr::distinct(SUBJECT_ID, GENDER) %>%
+    ggplot(aes(x = GENDER)) +
+    geom_bar(color = 'black', fill = 'gray') +
+    ylab("number of unique subjects") +
+    ggtitle("Distribution of genders by subjects") +
+    coord_flip()
+
+## check distribution of length of stay
+cohortmeta %>%
+    ggplot(aes(x = LOS)) +
+    geom_histogram(boundary = 0, binwidth = 5, color = 'black', fill = 'gray') +
+    scale_x_continuous("length of admission (days)", breaks = seq(0, 1000, 100)) +
+    ylab("number of admissions") +
+    ggtitle("Distribution of length of stay by hospital admissions")
+```
+
+Check interaction of LOS and weight.
+
+```{r, fig.width = 7, fig.height = 6}
+## check LOS x weight
+gp <- cohortmeta %>%
+    dplyr::filter(HOSPITAL_EXPIRE_FLAG == 0L) %>%
+    ggplot(aes(x = WEIGHT_MAX, y = LOS)) +
+    geom_point(size = 1/2, alpha = 1/5) + 
+    scale_x_continuous("max weight during admission", breaks = seq(0, 1000, 100)) +
+    scale_y_continuous("length of admission (days)", breaks = seq(0, 1000, 100)) +
+    ggtitle("Distribution of length of stay by hospital admissions",
+            "only patients who didn't die during stay")
+gp
+gp + coord_cartesian(xlim = c(0, 300), y = c(0, 150))
+
+cohortmeta %>%
+    dplyr::filter(HOSPITAL_EXPIRE_FLAG == 0L) %>%
+    dplyr::mutate(WEIGHT_MAX = cut_width(WEIGHT_MAX, boundary = 0, width = 10)) %>%
+    ggplot(aes(x = WEIGHT_MAX, y = LOS)) +
+    geom_boxplot(varwidth = TRUE) + 
+    scale_x_discrete("max weight during admission", drop = FALSE) + 
+    scale_y_continuous("length of admission (days)", breaks = seq(0, 1000, 100)) +
+    ggtitle("Distribution of length of stay by hospital admissions",
+            "only patients who didn't die during stay") +
+    theme_x_rotate()
+
+cohortmeta %>%
+    dplyr::filter(HOSPITAL_EXPIRE_FLAG == 0L,
+                  WEIGHT_MAX < 300) %>%
+    dplyr::mutate(WEIGHT_MAX = cut_width(WEIGHT_MAX, boundary = 0, width = 10)) %>%
+    ggplot(aes(x = WEIGHT_MAX, y = LOS)) +
+    geom_quasirandom(varwidth = TRUE, size = 1/2, alpha = 1/2) + 
+    geom_boxplot(varwidth = TRUE, alpha = 1/2, color = 'blue', outlier.shape = NA) + 
+    scale_x_discrete("max weight during admission", drop = FALSE) + 
+    scale_y_continuous("length of admission (days)", breaks = seq(0, 1000, 100)) +
+    ggtitle("Distribution of length of stay by hospital admissions",
+            "only patients who didn't die during stay") +
+    theme_x_rotate()
+
+cohortmeta %>%
+    dplyr::filter(HOSPITAL_EXPIRE_FLAG == 0L,
+                  WEIGHT_MAX < 300) %>%
+    dplyr::mutate(WEIGHT_MAX = cut_width(WEIGHT_MAX, boundary = 0, width = 10)) %>%
+    ggplot(aes(x = WEIGHT_MAX, y = LOS)) +
+    geom_quasirandom(varwidth = TRUE, size = 1/2, alpha = 1/2) + 
+    geom_boxplot(varwidth = TRUE, alpha = 2/3, color = 'blue', outlier.shape = NA) + 
+    scale_x_discrete("max weight during admission", drop = FALSE) + 
+    scale_y_continuous("length of admission (days)", breaks = seq(0, 1000, 10)) +
+    ggtitle("Distribution of length of stay by hospital admissions",
+            "only patients who didn't die during stay") +
+    theme_x_rotate() +
+    coord_cartesian(ylim = c(0, 50)) 
+
+gp <- cohortmeta %>%
+    dplyr::filter(HOSPITAL_EXPIRE_FLAG == 0L) %>%
+    dplyr::mutate(WEIGHT_MAX = cut(WEIGHT_MAX, c(0, 80, 136, 1000))) %>%
+    ggplot(aes(x = WEIGHT_MAX, y = LOS)) +
+    geom_quasirandom(varwidth = TRUE, size = 1/2, alpha = 1/2) + 
+    geom_boxplot(varwidth = TRUE, alpha = 2/3, color = 'blue', outlier.shape = NA) + 
+    scale_x_discrete("max weight during admission", drop = FALSE) + 
+    scale_y_continuous("length of admission (days)", breaks = seq(0, 1000, 10)) +
+    ggtitle("Distribution of length of stay by hospital admissions",
+            "only patients who didn't die during stay")
+gp + coord_flip()
+gp + coord_flip(ylim = c(0, 50))
+```
+
+Clear difference.
+
+Simple OLS.
+
+```{r}
+summary(lm(LOS ~ WEIGHT_MAX,
+           data = dplyr::filter(cohortmeta,
+                                WEIGHT_MAX < 400,
+                                HOSPITAL_EXPIRE_FLAG == 0L)))
+```
+
+Also check set of top events across all patients and notes (including children).
+
+```{r}
+turnevents %>%
+    tidyr::unite(label, label, value, sep = "-") %>%
+    dplyr::count(label, sort = TRUE)
+```
+
+Check for just our cohort.
+
+```{r}
+cohortturns %>%
+    tidyr::unite(label, LABEL, VALUE, sep = "-") %>%
+    dplyr::count(label, wt = n, sort = TRUE)
+```
+
+## Filtering and Adjustments
+
+First, change age for older patients.
+
+```{r}
+cohortturns <- cohortturns %>%
+    dplyr::mutate(AGE = pmin(AGE, 90))
+```
+
+Also remove anyone who has an unrealistic weight (>700).
+
+```{r}
+cohortmeta %>%
+    dplyr::arrange(-WEIGHT_MAX) %>%
+    dplyr::select(SUBJECT_ID, WEIGHT_MAX)
+```
+
+We will just remove those few cases where weight is over 600KG.
+
+```{r}
+cohortturns <- cohortturns %>%
+    dplyr::filter(WEIGHT_MAX < 600)
+```
+
+# Analysis
+
+## Total Counts
+
+Examine high-level counts of recorded events across admissions.
+
+```{r, fig.width = 8, fig.height = 3.5}
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, GENDER, WEIGHT_MAX,
+                 wt = n, name = "n") %>%
+    dplyr::mutate(WEIGHT_BIN = cut(WEIGHT_MAX, c(0, 80, 136, 600))) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = n)) +
+    geom_boxplot(varwidth = TRUE, outlier.alpha = 1/4) +
+    xlab("max weight during admission (KG, binned)") +
+    ylab("number of turn events") +
+    ggtitle("Assocation between number of turn events and weight") +
+    coord_flip()
+
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, GENDER, WEIGHT_MAX, LOS,
+                 wt = n, name = "n") %>%
+    dplyr::mutate(WEIGHT_BIN = cut(WEIGHT_MAX, c(0, 80, 136, 600)),
+                  scaled_n = n / LOS) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = scaled_n)) +
+    geom_boxplot(varwidth = TRUE, outlier.alpha = 1/4) +
+    xlab("max weight during admission (KG, binned)") +
+    ylab("number of turn events per day") +
+    ggtitle("Assocation between rate of turn events and weight") +
+    coord_flip()
+```
+
+We can also bin by 20KG.
+
+```{r, fig.width = 8, fig.height = 3.5}
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, GENDER, WEIGHT_MAX,
+                 wt = n, name = "n") %>%
+    dplyr::mutate(WEIGHT_BIN = cut_width(WEIGHT_MAX,  boundary = 0, width = 20)) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = n)) +
+    geom_boxplot(varwidth = TRUE, outlier.alpha = 1/4) +
+    xlab("max weight during admission (KG, binned)") +
+    ylab("number of turn events") +
+    theme_x_rotate() +
+    ggtitle("Assocation between number of turn events and weight")
+
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, GENDER, WEIGHT_MAX, LOS,
+                 wt = n, name = "n") %>%
+    dplyr::mutate(WEIGHT_BIN = cut_width(WEIGHT_MAX,  boundary = 0, width = 20),
+                  scaled_n = n / LOS) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = scaled_n)) +
+    geom_boxplot(varwidth = TRUE, outlier.alpha = 1/4) +
+    xlab("max weight during admission (KG, binned)") +
+    ylab("number of turn events per day") +
+    theme_x_rotate() +
+    ggtitle("Assocation between rate of turn events and weight")
+```
+
+## By Type
+
+Look at event types separately.
+
+```{r, fig.width = 8, fig.height = 4}
+gp <- cohortturns %>%
+    dplyr::mutate(WEIGHT_BIN = cut(WEIGHT_MAX, c(0, 80, 136, 600)),
+                  scaled_n = n / LOS) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = scaled_n)) +
+    geom_boxplot(varwidth = TRUE, outlier.alpha = 1/4) +
+    xlab("max weight during admission\n(KG, binned)") +
+    ylab("number of turn events per day") +
+    theme_x_rotate() +
+    ggtitle("Assocation between rate of turn events and weight") +
+    facet_grid(. ~ LABEL + VALUE)
+gp + coord_flip()
+gp + coord_flip(ylim = c(0, 2))
+```
+
+These distributions look a bit odd.
+
+```{r}
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, LOS, wt = n) %>%
+    dplyr::mutate(nscaled = n / LOS) %>%
+    dplyr::arrange(desc(nscaled))
+
+cohortturns %>%
+    dplyr::select(HADM_ID, SUBJECT_ID, AGE, LOS, VALUE, LABEL, n) %>%
+    dplyr::mutate(nscaled = n / LOS) %>%
+    dplyr::arrange(desc(nscaled))
+```
+
+We see that some of the admissions with high "rates" of turning are actually 
+incredibly short stays (less than a single day). We can see how this looks.
+
+```{r}
+cohortturns %>%
+    dplyr::distinct(HADM_ID, SUBJECT_ID, LOS) %>%
+    dplyr::mutate(LOS = ceiling(LOS)) %>%
+    ggplot(aes(x = LOS)) +
+    geom_histogram(boundary = 1/2, binwidth = 1,
+                   color = "black", fill = "gray") +
+    xlab("length of stay (days)") +
+    ylab("number of admissions")
+
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, LOS, wt = n) %>%
+    dplyr::mutate(nscaled = n / LOS) %>%
+    dplyr::mutate(LOS = ceiling(LOS)) %>%
+    dplyr::filter(LOS <= 50) %>%
+    ggplot(aes(x = LOS, y = nscaled, group = LOS)) +
+    geom_quasirandom(varwidth = TRUE, size = 1/2, alpha = 1/5) +
+    geom_boxplot(color = '#E38191', fill = NA, outlier.shape = NA) +
+    ylab("turn events per day")
+
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, LOS, wt = n) %>%
+    dplyr::mutate(nscaled = n / LOS) %>%
+    dplyr::filter(LOS <= 50) %>%
+    ggplot(aes(x = LOS, y = nscaled)) +
+    geom_point(size = 1/2, alpha = 1/5) +
+    stat_summary(aes(x = ceiling(LOS)), fun = median,
+                 color = '#E38191', size = 1/2)
+    ylab("turn events per day\n(median per days)")
+```
+
+Might make sense to exclude patients staying shorter than 48 hours.
+
+```{r}
+cohortturns <- cohortturns %>%
+    dplyr::filter(LOS > 2)
+```
+
+Now look at this again by weight.
+
+```{r, fig.width = 6, fig.height = 3.5}
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, GENDER, WEIGHT_MAX, LOS,
+                 wt = n, name = "n") %>%
+    dplyr::mutate(scaled_n = n / LOS) %>%
+    dplyr::mutate(WEIGHT_BIN = cut(WEIGHT_MAX, c(0, 80, 136, 600))) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = scaled_n)) +
+    geom_quasirandom(alpha = 1/5, size = 1/2) + #, varwidth = TRUE) + 
+    geom_boxplot(varwidth = TRUE, outlier.shape = NA,
+                 color = '#E38191', fill = 'white', alpha = 1/4) +
+    xlab("max weight during admission\n(KG, binned)") +
+    ylab("turn events per day") +
+    ggtitle("Assocation between number of turn events and weight") +
+    coord_flip()
+```
+
+Split by type.
+
+```{r, fig.width = 8, fig.height = 4}
+gp <- cohortturns %>%
+    dplyr::mutate(WEIGHT_BIN = cut(WEIGHT_MAX, c(0, 80, 136, 600)),
+                  scaled_n = n / LOS) %>%
+    ggplot(aes(x = WEIGHT_BIN, y = scaled_n)) +
+    geom_boxplot(varwidth = TRUE, outlier.alpha = 1/4) +
+    xlab("max weight during admission\n(KG, binned)") +
+    ylab("number of turn events per day") +
+    theme_x_rotate() +
+    ggtitle("Assocation between rate of turn events and weight") +
+    facet_grid(. ~ LABEL + VALUE)
+gp + coord_flip()
+gp + coord_flip(ylim = c(0, 2))
+```
+
+Also just look at counts (median evnts per day).
+
+```{r}
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, WEIGHT_MAX, LOS, wt = n) %>%
+    dplyr::mutate(WEIGHT_BIN = cut(WEIGHT_MAX, c(0, 80, 136, 600)),
+                  scaled_n = n / LOS) %>%
+    dplyr::group_by(WEIGHT_BIN) %>%
+    dplyr::summarize(Admissions = n(),
+                     `Median Events` = median(scaled_n))
+
+cohortturns %>%
+    dplyr::count(HADM_ID, SUBJECT_ID, WEIGHT_MAX, LOS, wt = n) %>%
+    dplyr::mutate(WEIGHT_BIN = cut_width(WEIGHT_MAX, boundary = 0, width = 20),
+                  scaled_n = n / LOS) %>%
+    dplyr::group_by(WEIGHT_BIN) %>%
+    dplyr::summarize(Admissions = n(),
+                     `Median Events` = median(scaled_n))
+```
