@@ -1,0 +1,334 @@
+---
+title: "Analysis of Oral Care"
+author: "Patrick Kimes"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+# Outline
+
+Here we do simple word frequencies.
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(cowplot)
+library(bigrquery)
+library(ggbeeswarm)
+library(stringr)
+library(multcomp)
+
+theme_set(theme_minimal())
+theme_x_rotate <- function(...) {
+    theme(axis.text.x = element_text(angle = 90, vjust = 1/2, hjust = 1), ...)
+}
+
+## bigrquery issue: https://github.com/r-dbi/bigrquery/issues/395
+options(scipen = 20)
+options(dplyr.summarise.inform = FALSE)
+```
+
+We will be querying from the same project and dataset on BigQuery.
+
+```{r}
+project <- "hst-953-2019"
+bq_auth(email = "patrick.kimes@gmail.com")
+```
+
+Data tables will be saved to a local directory for easier future access.
+
+```{r}
+bqdir <- file.path("..", "data", "bigquery")
+dir.create(bqdir, showWarnings = FALSE, recursive = TRUE)
+```
+
+# Data
+
+## Ventilation
+
+Read in ventilation records as parsed by Joy.
+
+```{r}
+vent_rds <- file.path(bqdir, "vent.rds")
+if (file.exists(vent_rds)) {
+    vent <- readRDS(vent_rds)
+} else {
+    bq_tab_vent <- "hst-953-2019.bias2020.ventilation_records"
+    vent <- bq_table_download(bq_tab_vent, page_size = 1e3)
+    saveRDS(vent, file = vent_rds)
+}
+```
+
+Note that many of these ICU stays have no ventilation. These
+records have NAs for total number and hours of ventilation.
+We will replace these with 0s.
+
+```{r}
+vent <- vent %>%
+    tidyr::replace_na(list(max_ventnum = 0,
+                           total_hours = 0))
+```
+
+We also take the max number of ventilation events across
+ICU stays for each hospital admission. We also take the 
+total ventilation duration across the entire hospital 
+admission.
+
+```{r}
+ventrecords <- vent %>%
+    dplyr::group_by(subject_id, hadm_id) %>%
+    dplyr::summarize(max_ventnum = max(max_ventnum),
+                     total_hours = sum(total_hours)) %>%
+    dplyr::ungroup()
+```
+
+## Oral Care
+
+We also pull out oral care information.
+
+```{r}
+oralcare_rds <- file.path(bqdir, "oralcare.rds")
+if (file.exists(oralcare_rds)) {
+    oralcare <- readRDS(oralcare_rds)
+} else {
+    query <- paste("WITH",
+                   "oralcare as (",
+                   "  SELECT *",
+                   "  FROM `hst-953-2019.bias2020.nursing_care_items` n",
+                   "  WHERE n.type LIKE \"oral care\"",
+                   "),",
+                   "chart_records as (",
+                   "  SELECT distinct",
+                   "  subject_id, hadm_id, icustay_id, itemid, charttime",
+                   "  FROM `physionet-data.mimiciii_clinical.chartevents`",
+                   "  WHERE itemid IN (SELECT distinct itemid FROM oralcare)",
+                   ")",
+                   "SELECT c.*, o.label",
+                   "FROM chart_records as c",
+                   "LEFT JOIN oralcare as o",
+                   "ON c.itemid = o.itemid",
+                   "WHERE hadm_id IS NOT NULL",
+                   "AND icustay_id IS NOT NULL",
+                   sep = "\n")
+    oc <- bq_project_query(x = "hst-953-2019", query = query)
+    oralcare <- bq_table_download(oc)
+    saveRDS(oralcare, oralcare_rds)
+}
+```
+
+Count oral care events per hospital admission.
+
+```{r}
+ocrecords <- oralcare %>%
+    dplyr::count(subject_id, hadm_id, name = "noralcare")
+```
+
+## Cohort
+
+Determine and extract the same cohort as Joy.
+
+This query performs the following operations to return a 
+cohort table.
+
+1. Take unique hospital admissions, add a few metadata fields
+and filter on admissions with chartevent data.
+2. Determine the total ICU length of stay using the `los` field 
+in the ICU stays table.
+3. Determine the average age, oasis score, oasis prob, and mechanical
+ventilation indicator for each hospital admission using the OASIS
+derived table.
+4. Add Elixhauser score along with OASIS score and ICU length of stay
+to cohort table.
+
+```{r}
+joycohort_rds <- file.path(bqdir, "joycohort.rds")
+if (file.exists(joycohort_rds)) {
+    joycohort <- readRDS(joycohort_rds)
+} else {
+    query <- paste("WITH",
+                   "patients as (",
+                   "  SELECT distinct",
+                   "    w.subject_id, w.hadm_id, gender, a.ethnicity, ",
+                   "    dob, weight_max, height_max",
+                   "  FROM `hst-953-2019.bias2020.notes_by_weight` w",
+                   "  LEFT JOIN `physionet-data.mimiciii_clinical.admissions` a",
+                   "  ON w.subject_id = a.subject_id",
+                   "  WHERE a.has_chartevents_data = 1",
+                   "),",
+                   "icustay as (",
+                   "  SELECT distinct ",
+                   "    subject_id, hadm_id, sum(los) as icu_los",
+                   "  FROM `physionet-data.mimiciii_clinical.icustays`",
+                   "  GROUP BY subject_id, hadm_id",
+                   "),",
+                   "oasis AS (",
+                   "  SELECT distinct",
+                   "    hadm_id, avg(age) as age, ",
+                   "    avg(oasis) as ave_oasis_prob, ",
+                   "    avg(oasis) as ave_oasis, ",
+                   "    max(mechvent) as mechvent",
+                   "  FROM `physionet-data.mimiciii_derived.oasis`",
+                   "  GROUP BY hadm_id",
+                   "),",
+                   "cohort AS (",
+                   "  SELECT distinct ",
+                   "    pt.*, o.age, i.icu_los, e.elixhauser_sid30,",
+                   "    o.ave_oasis_prob, o.ave_oasis, o.mechvent",
+                   "  FROM patients as pt",
+                   "  LEFT JOIN icustay as i",
+                   "  ON pt.subject_id = i.subject_id",
+                   "  AND pt.hadm_id = i.hadm_id",
+                   "  LEFT JOIN `physionet-data.mimiciii_derived.elixhauser_quan_score` e",
+                   "  ON pt.hadm_id = e.hadm_id ",
+                   "  LEFT JOIN  oasis o",
+                   "  ON pt.hadm_id = o.hadm_id",
+                   ")",
+                   "SELECT distinct * FROM cohort",
+                   sep = "\n")
+    jco <- bq_project_query(x = "hst-953-2019", query = query)
+    joycohort <- bq_table_download(jco)
+    saveRDS(joycohort, joycohort_rds)
+}
+```
+
+Note that some records in this cohort seem duplicated. Namely, a few
+`subject_id, hadm_id` combinations occur more than once. This may be 
+due to these patients or hospital admissions having multiple non-unique
+entries in one of the other tables.
+
+```{r}
+joycohort %>%
+    dplyr::count(subject_id, hadm_id, sort = TRUE) %>%
+    dplyr::filter(n > 1L)
+```
+
+The occurrence of this seems fairly rare, so we won't worry about it too
+much right now.
+
+Clean up the age and split weight into cohort groups.
+
+```{r}
+joycohort <- joycohort %>%
+    dplyr::mutate(age = if_else(age > 100, 95, age),
+                  cohort = cut(weight_max, c(0, 80, 136, Inf)))
+```
+
+Combine data tables.
+
+```{r}
+fulldat <- joycohort %>%
+    dplyr::left_join(ventrecords, by = c("subject_id", "hadm_id")) %>%
+    dplyr::left_join(ocrecords, by =  c("subject_id", "hadm_id"))
+```
+
+Count number of occurrences of NAs in data.
+
+```{r}
+fulldat %>%
+    dplyr::summarize_all(~sum(is.na(.))) %>%
+    t()
+```
+
+We have NAs in many columns, including DOB, Elixhauser score and number of
+oral care events. We'll assume the NAs for oral care are zeros.
+
+```{r}
+fulldat <- fulldat %>%
+    tidyr::replace_na(list(noralcare = 0L))
+```
+
+# Filtering
+
+Count up the number of admissions where patient was on mechanical
+ventilator.
+
+```{r}
+fulldat %>%
+    dplyr::count(mechvent, cohort) %>%
+    tidyr::pivot_wider(names_from = cohort, values_from = n)
+
+fulldat %>%
+    dplyr::count(mechvent, cohort) %>%
+    dplyr::group_by(cohort) %>%
+    dplyr::mutate(n = round(n / sum(n), 3)) %>%
+    tidyr::pivot_wider(names_from = cohort, values_from = n)
+```
+
+Count up number of minors.
+
+```{r}
+fulldat %>%
+    dplyr::count(age = cut(age, c(0, 18, Inf),
+                           include.lowest = TRUE))
+```
+
+We will filter patient cohort based on several clinical features.
+
+```{r}
+fulldat <- fulldat %>%
+    dplyr::filter(!is.na(age), age > 18,
+                  weight_max < 600,
+                  mechvent == 1L)
+```
+
+# Analysis
+
+See that heavier patients are more likely to have been on 
+mech vent at some point during the admission. We will only 
+use stays that involve the patient being placed on mech vent.
+
+```{r, fig.width = 5, fig.height = 4}
+gpbox <- fulldat %>%
+    ggplot(aes(x = cohort, y = noralcare)) +
+    geom_quasirandom(alpha = 1/2, pch = 21, fill = 'gray') +
+    geom_boxplot(alpha = 0, varwidth = TRUE, outlier.shape = NA) + 
+    ggtitle("Number of oral care events by weight")
+    
+gpbox +
+    ylab("number of oral care events") +
+    xlab("Weight Group")
+
+gpbox +
+    scale_y_continuous("number of oral care events", trans = "log10") +
+    xlab("Weight Group")
+```
+
+Look at this differently - namely, filter out patients with stays 
+less than 24 hours and calcualte the rate.
+
+```{r, fig.width = 6, fig.height = 3.5}
+fulldat %>%
+    dplyr::filter(total_hours > 24) %>%
+    ggplot(aes(x = cohort, y = noralcare / total_hours * 24)) +
+    geom_quasirandom(alpha = 1/2, pch = 21, fill = 'gray') +
+    geom_boxplot(alpha = 1/2, fill = 'white', color = 'red',
+                 varwidth = TRUE, outlier.shape = NA) + 
+    ggtitle("Average daily number of oral care events by weight",
+            "patients w/ >24 hours on ventilator") +
+    coord_flip() + 
+    ylab("number of oral care events") +
+    xlab("Weight Group")
+```
+
+## Models
+
+We now fit a simple Poisson model with length of time on mechanical 
+ventilator as an offset.
+
+```{r}
+pfit <- glm(formula = noralcare ~ 1 + cohort,
+            offset = log(total_hours), family = "poisson",
+            data = fulldat)
+summary(pfit)
+```
+
+Perform the full pairwise comparison of all `cohort` levels.
+
+```{r}
+summary(glht(pfit, mcp(cohort = "Tukey")))
+```
+
+ 
