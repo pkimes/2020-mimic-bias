@@ -126,6 +126,83 @@ ocrecords <- oralcare %>%
     dplyr::count(subject_id, hadm_id, name = "noralcare")
 ```
 
+## Substance Use
+
+We also pull in patients information with 
+
+```{r}
+subsabuse_rds <- file.path(bqdir, "subsabuse.rds")
+if (file.exists(subsabuse_rds)) {
+    subsabuse <- readRDS(subsabuse_rds)
+} else {
+    query <- paste("WITH", 
+                   "ICD9_SUBSET AS (",
+                   "  SELECT REPLACE (ICD9_CODE, \".\", \"\") AS ICD9_CODE, LONG_TITLE",
+                   "  FROM `hst-953-2019.bias2020.icd9_substance_abuse`",
+                   "),",
+                   "ABUSE_DIAGNOSES AS (",
+                   "  SELECT SUBJECT_ID, HADM_ID, ICD9_CODE, LONG_TITLE",
+                   "  FROM `physionet-data.mimiciii_clinical.diagnoses_icd`",
+                   "  INNER JOIN ICD9_SUBSET",
+                   "  USING (ICD9_CODE)",
+                   ")",
+                   "SELECT *",
+                   "FROM ABUSE_DIAGNOSES",
+                   sep = "\n")
+    sab <- bq_project_query(x = "hst-953-2019", query = query)
+    subsabuse <- bq_table_download(sab)
+    saveRDS(subsabuse, subsabuse_rds)
+}
+```
+
+Change column names to lower case.
+
+```{r}
+subsabuse <- subsabuse %>%
+    dplyr::rename_all(tolower)
+```
+
+Determine subject and admissions with either any substance abuse
+or any alcohol abuse recorded. Read in a table to help us do this.
+
+```{r}
+icd9codes <- read_tsv(file.path("..", "data", "curated",
+                                "icd-9-substanceabuse.tsv"),
+                      col_types = cols(),
+                      col_names = c("icd9_code", "long_title",
+                                    "alcohol", "iv"),
+                      skip = 1)
+icd9codes <- icd9codes %>%
+    dplyr::mutate(icd9_code = gsub("\\.", "", icd9_code)) 
+```
+
+```{r}
+alcohol_ids <- subsabuse %>%
+    dplyr::inner_join(icd9codes %>%
+                      dplyr::filter(alcohol == "YES") %>%
+                      dplyr::select(icd9_code),
+                      by = "icd9_code") %>%
+    dplyr::distinct(subject_id, hadm_id)
+
+iv_ids <- subsabuse %>%
+    dplyr::inner_join(icd9codes %>%
+                      dplyr::filter(iv == "YES") %>%
+                      dplyr::select(icd9_code),
+                      by = "icd9_code") %>%
+    dplyr::distinct(subject_id, hadm_id)
+
+anysubs_ids <- subsabuse %>%
+    dplyr::distinct(subject_id, hadm_id)
+```
+
+Check how many total admissions.
+
+```{r}
+nrow(anysubs_ids)
+nrow(alcohol_ids)
+nrow(iv_ids)
+```
+
 ## Cohort
 
 Determine and extract the same cohort as Joy.
@@ -155,7 +232,7 @@ if (file.exists(joycohort_rds)) {
                    "    dob, weight_max, height_max",
                    "  FROM `hst-953-2019.bias2020.notes_by_weight` w",
                    "  LEFT JOIN `physionet-data.mimiciii_clinical.admissions` a",
-                   "  ON w.subject_id = a.subject_id",
+                   "  USING (subject_id, hadm_id)",
                    "  WHERE a.has_chartevents_data = 1",
                    "),",
                    "icustay as (",
@@ -194,20 +271,6 @@ if (file.exists(joycohort_rds)) {
 }
 ```
 
-Note that some records in this cohort seem duplicated. Namely, a few
-`subject_id, hadm_id` combinations occur more than once. This may be 
-due to these patients or hospital admissions having multiple non-unique
-entries in one of the other tables.
-
-```{r}
-joycohort %>%
-    dplyr::count(subject_id, hadm_id, sort = TRUE) %>%
-    dplyr::filter(n > 1L)
-```
-
-The occurrence of this seems fairly rare, so we won't worry about it too
-much right now.
-
 Clean up the age and split weight into cohort groups.
 
 ```{r}
@@ -222,6 +285,38 @@ Combine data tables.
 fulldat <- joycohort %>%
     dplyr::left_join(ventrecords, by = c("subject_id", "hadm_id")) %>%
     dplyr::left_join(ocrecords, by =  c("subject_id", "hadm_id"))
+```
+
+Add substance abuse labels to the cohort table.
+
+```{r}
+fulldat <- fulldat %>%
+    dplyr::left_join(dplyr::mutate(anysubs_ids, substance = "reported"),
+                     by = c("subject_id", "hadm_id")) %>%
+    dplyr::left_join(dplyr::mutate(alcohol_ids, alcohol = "reported"),
+                     by = c("subject_id", "hadm_id")) %>%
+    dplyr::left_join(dplyr::mutate(iv_ids, iv = "reported"),
+                     by = c("subject_id", "hadm_id")) %>%
+    tidyr::replace_na(list(substance = "none",
+                           alcohol = "none",
+                           iv = "none")) %>%
+    dplyr::mutate(substance = factor(substance),
+                  alcohol = factor(alcohol),
+                  iv = factor(iv))
+```
+
+Convert some columns into factors.
+
+```{r}
+fulldat <- fulldat %>%
+    dplyr::mutate(ethnicity = case_when(
+                      grepl("WHITE", ethnicity) ~ "WHITE",
+                      grepl("BLACK", ethnicity) ~ "BLACK",
+                      grepl("(ASIAN|MIDDLE EASTERN)", ethnicity) ~ "ASIAN",
+                      grepl("(HISPANIC|LATINO|CARIBEAN|SOUTH AMERICAN)",
+                            ethnicity) ~ "HISPANIC",
+                      TRUE ~ "OTHER")) %>%
+    dplyr::mutate_at(c("gender", "ethnicity"), factor)
 ```
 
 Count number of occurrences of NAs in data.
@@ -274,7 +369,7 @@ fulldat <- fulldat %>%
                   mechvent == 1L)
 ```
 
-# Analysis
+# Analysis: Weight
 
 See that heavier patients are more likely to have been on 
 mech vent at some point during the admission. We will only 
@@ -330,5 +425,142 @@ Perform the full pairwise comparison of all `cohort` levels.
 ```{r}
 summary(glht(pfit, mcp(cohort = "Tukey")))
 ```
+
+Also correct for various other variables.
+
+```{r}
+pfit <- glm(formula = noralcare ~ 1 + gender + ethnicity + age +
+                ave_oasis + elixhauser_sid30 + cohort,
+            offset = log(total_hours), family = "poisson",
+            data = fulldat)
+summary(pfit)
+```
+
+Perform the full pairwise comparison of all `cohort` levels.
+
+```{r}
+summary(glht(pfit, mcp(cohort = "Tukey")))
+```
+
+Effect is similar even after correcting for other patient demographics.
+
+# Analysis: Alcohol
+
+Count number of patients with alcohol use reported during admission.
+
+```{r}
+fulldat %>%
+    dplyr::count(alcohol)
+```
+
+Check to see how patients with alcohol abuse might differ from
+other patients.
+
+```{r, fig.width = 5, fig.height = 4}
+gpbox <- fulldat %>%
+    ggplot(aes(x = alcohol, y = noralcare)) +
+    geom_quasirandom(alpha = 1/2, pch = 21, fill = 'gray', varwidth = TRUE) +
+    geom_boxplot(alpha = 0, varwidth = TRUE, outlier.shape = NA) + 
+    ggtitle("Number of oral care events by weight")
+    
+gpbox +
+    ylab("number of oral care events") +
+    xlab("Weight Group")
+
+gpbox +
+    scale_y_continuous("number of oral care events", trans = "log10") +
+    xlab("Weight Group")
+```
+
+Look at this differently - namely, filter out patients with stays 
+less than 24 hours and calcualte the rate.
+
+```{r, fig.width = 6, fig.height = 3.5}
+fulldat %>%
+    dplyr::filter(total_hours > 24,
+    (alcohol == "reported") |
+    (substance == "none")) %>%
+    ggplot(aes(x = alcohol, y = noralcare / total_hours * 24)) +
+    geom_quasirandom(alpha = 1/2, pch = 21, fill = 'gray') +
+    geom_boxplot(alpha = 1/2, fill = 'white', color = 'red',
+                 varwidth = TRUE, outlier.shape = NA) + 
+    ggtitle("Average daily number of oral care events",
+            "patients w/ >24 hours on ventilator") +
+    coord_flip() + 
+    ylab("number of oral care events") +
+    xlab("Alcohol Abuse")
+```
+
+Actually see higher rates of oral events.
+
+## Models
+
+We now fit a simple Poisson model with length of time on mechanical 
+ventilator as an offset.
+
+```{r}
+pfit <- glm(formula = noralcare ~ 1 + alcohol,
+            offset = log(total_hours), family = "poisson",
+            data = fulldat %>%
+                dplyr::filter((alcohol == "reported") |
+                              (substance == "none")))
+summary(pfit)
+```
+
+```{r}
+pfit <- glm(formula = noralcare ~ 1 + gender + ethnicity +
+                age + ave_oasis + elixhauser_sid30 + alcohol,
+            offset = log(total_hours), family = "poisson",
+            data = fulldat %>%
+                dplyr::filter((alcohol == "reported") |
+                              (substance == "none")))
+summary(pfit)
+```
+
+In both models, we see a slightly higher rate of oral events in 
+this population.
+
+```{r}
+exp(.11)
+```
+
+About 11% higher than in non-alcohol patients.
+
+# Analysis: IV Drug
+
+Count number of patients with IV drug use reported during admission.
+
+```{r}
+fulldat %>%
+    dplyr::count(iv)
+```
+
+## Models
+
+We now fit a simple Poisson model with length of time on mechanical 
+ventilator as an offset.
+
+```{r}
+pfit <- glm(formula = noralcare ~ 1 + iv,
+            offset = log(total_hours), family = "poisson",
+            data = fulldat %>%
+                dplyr::filter((iv == "reported") |
+                              (substance == "none")))
+summary(pfit)
+```
+
+```{r}
+pfit <- glm(formula = noralcare ~ 1 + gender + ethnicity +
+                age + ave_oasis + elixhauser_sid30 + iv,
+            offset = log(total_hours), family = "poisson",
+            data = fulldat %>%
+                dplyr::filter((iv == "reported") |
+                              (substance == "none")))
+summary(pfit)
+```
+
+Again, we see a slightly higher rate of oral events in 
+this population.
+
 
  
