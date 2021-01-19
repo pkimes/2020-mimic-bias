@@ -1,128 +1,128 @@
-ICD-9-CM diagnosis codes	Description
-291.0	Alcohol withdrawal delirium
-291.1	Alcohol-induced persisting amnestic disorder
-291.2	Alcohol-induced persisting dementia
-291.3	Alcohol-induced psychotic disorder with hallucinations
-291.4	Idiosyncratic alcohol intoxication
-291.5	Alcohol-induced psychotic disorder with delusions
-291.8	Other specified alcohol-induced mental disorders
-291.81	Alcohol withdrawal
-291.82	Alcohol-induced sleep disorders
-291.89	Other alcohol-induced disorders
-291.9	Unspecified alcohol-induced mental disorders
-303.00	Acute alcohol intoxication
-303.01	Acute alcohol intoxication
-303.02	Acute alcohol intoxication
-303.03	Acute alcohol intoxication
-303.90	Other and unspecified alcohol dependence
-303.91	Other and unspecified alcohol dependence
-303.92	Other and unspecified alcohol dependence
-303.93	Other and unspecified alcohol dependence
-305.00	Alcohol abuse
-305.01	Alcohol abuse
-305.02	Alcohol abuse
-305.03	Alcohol abuse
-357.5	Alcoholic polyneuropathy
-425.5	Alcoholic cardiomyopathy
-535.30	Alcoholic gastritis
-535.31	Alcoholic gastritis
-571.0	Alcoholic fatty liver
-571.1	Acute alcoholic hepatitis
-571.2	Alcoholic cirrhosis of liver
-571.3	Alcoholic liver damage, unspecified
-E860.0	Alcoholic beverages poisoning
-304.40	Amphetamines dependence
-304.41	Amphetamines dependence
-304.42	Amphetamines dependence
-304.43	Amphetamines dependence
-305.70	Nondependent amphetamine abuse
-305.71	Nondependent amphetamine abuse
-305.72	Nondependent amphetamine abuse
-305.73	Nondependent amphetamine abuse
-304.30	Cannabis dependence
-304.31	Cannabis dependence
-304.32	Cannabis dependence
-304.33	Cannabis dependence
-305.20	Nondependent cannabis abuse
-305.21	Nondependent cannabis abuse
-305.22	Nondependent cannabis abuse
-305.23	Nondependent cannabis abuse
-304.20	Cocaine dependence
-304.21	Cocaine dependence
-304.22	Cocaine dependence
-304.23	Cocaine dependence
-305.60	Nondependent cocaine abuse
-305.61	Nondependent cocaine abuse
-305.62	Nondependent cocaine abuse
-305.63	Nondependent cocaine abuse
-968.5	Poisoning by cocaine
-E938.5	Cocaine, adverse effects
-292.0	Drug withdrawal
-292.11	Drug-induced psychotic disorder with delusions
-292.12	Drug-induced psychotic disorder with hallucinations
-292.2	Pathological drug intoxication
-292.81	Drug-induced delirium
-292.82	Drug-induced persistent dementia
-292.83	Drug-induced persistent amnestic disorder
-292.84	Drug-induced mood disorder
-292.85	Drug-induced sleep disorders
-292.89	Other drug-induced mental disorder
-292.9	Unspecified drug-induced mental disorder
-304.50	Hallucinogen dependence
-304.51	Hallucinogen dependence
-304.52	Hallucinogen dependence
-304.53	Hallucinogen dependence
-305.30	Nondependent hallucinogen abuse
-305.31	Nondependent hallucinogen abuse
-305.32	Nondependent hallucinogen abuse
-305.33	Nondependent hallucinogen abuse
-969.6	Poisoning by hallucinogens (psychodysleptics)
-E854.1	Accidental poisoning by hallucinogens (psychodysleptics)
-E939.6	Hallucinogens, adverse effects
-304.00	Opioid type dependence
-304.01	Opioid type dependence
-304.02	Opioid type dependence
-304.03	Opioid type dependence
-304.70	Combinations of opioids with any other
-304.71	Combinations of opioids with any other
-304.72	Combinations of opioids with any other
-304.73	Combinations of opioids with any other
-305.50	Nondependent opioid abuse
-305.51	Nondependent opioid abuse
-305.52	Nondependent opioid abuse
-305.53	Nondependent opioid abuse
-965.00	Poisoning by opium
-965.01	Poisoning by heroin
-965.02	Poisoning by methadone
-965.09	Poisoning by other opiates and related narcotics
-E850.0	Heroin poisoning
-E935.0	Heroin, adverse effects
-304.10	Sedatives, hypnotics, or anxiolytic dependence
-304.11	Sedatives, hypnotics, or anxiolytic dependence
-304.12	Sedatives, hypnotics, or anxiolytic dependence
-304.13	Sedatives, hypnotics, or anxiolytic dependence
-305.40	Nondependent sedative, hypnotic, or anxiolytic abuse
-305.41	Nondependent sedative, hypnotic, or anxiolytic abuse
-305.42	Nondependent sedative, hypnotic, or anxiolytic abuse
-305.43	Nondependent sedative, hypnotic, or anxiolytic abuse
-304.60	Other, specified drug dependence
-304.61	Other, specified drug dependence
-304.62	Other, specified drug dependence
-304.63	Other, specified drug dependence
-304.80	Combinations excluding opioids
-304.81	Combinations excluding opioids
-304.82	Combinations excluding opioids
-304.83	Combinations excluding opioids
-304.90	Unspecified drug dependence
-304.91	Unspecified drug dependence
-304.92	Unspecified drug dependence
-304.93	Unspecified drug dependence
-305.90	Other, mixed or unspecified drug abuse
-305.91	Other, mixed or unspecified drug abuse
-305.92	Other, mixed or unspecified drug abuse
-305.93	Other, mixed or unspecified drug abuse
-648.30	Drug dependence complicating pregnancy, childbirth, or the puerperium
-648.31	Drug dependence complicating pregnancy, childbirth, or the puerperium
-648.32	Drug dependence complicating pregnancy, childbirth, or the puerperium
-648.33	Drug dependence complicating pregnancy, childbirth, or the puerperium
-V654.2	Counseling, substance use
+ICD-9-CM diagnosis codes	Description	Alcohol	Intravenous
+291.0	Alcohol withdrawal delirium	YES	NO
+291.1	Alcohol-induced persisting amnestic disorder	YES	NO
+291.2	Alcohol-induced persisting dementia	YES	NO
+291.3	Alcohol-induced psychotic disorder with hallucinations	YES	NO
+291.4	Idiosyncratic alcohol intoxication	YES	NO
+291.5	Alcohol-induced psychotic disorder with delusions	YES	NO
+291.8	Other specified alcohol-induced mental disorders	YES	NO
+291.81	Alcohol withdrawal	YES	NO
+291.82	Alcohol-induced sleep disorders	YES	NO
+291.89	Other alcohol-induced disorders	YES	NO
+291.9	Unspecified alcohol-induced mental disorders	YES	NO
+303.00	Acute alcohol intoxication	YES	NO
+303.01	Acute alcohol intoxication	YES	NO
+303.02	Acute alcohol intoxication	YES	NO
+303.03	Acute alcohol intoxication	YES	NO
+303.90	Other and unspecified alcohol dependence	YES	NO
+303.91	Other and unspecified alcohol dependence	YES	NO
+303.92	Other and unspecified alcohol dependence	YES	NO
+303.93	Other and unspecified alcohol dependence	YES	NO
+305.00	Alcohol abuse	YES	NO
+305.01	Alcohol abuse	YES	NO
+305.02	Alcohol abuse	YES	NO
+305.03	Alcohol abuse	YES	NO
+357.5	Alcoholic polyneuropathy	YES	NO
+425.5	Alcoholic cardiomyopathy	YES	NO
+535.30	Alcoholic gastritis	YES	NO
+535.31	Alcoholic gastritis	YES	NO
+571.0	Alcoholic fatty liver	YES	NO
+571.1	Acute alcoholic hepatitis	YES	NO
+571.2	Alcoholic cirrhosis of liver	YES	NO
+571.3	Alcoholic liver damage, unspecified	YES	NO
+E860.0	Alcoholic beverages poisoning	YES	NO
+304.40	Amphetamines dependence	NO	YES
+304.41	Amphetamines dependence	NO	YES
+304.42	Amphetamines dependence	NO	YES
+304.43	Amphetamines dependence	NO	YES
+305.70	Nondependent amphetamine abuse	NO	YES
+305.71	Nondependent amphetamine abuse	NO	YES
+305.72	Nondependent amphetamine abuse	NO	YES
+305.73	Nondependent amphetamine abuse	NO	YES
+304.30	Cannabis dependence	NO	NO
+304.31	Cannabis dependence	NO	NO
+304.32	Cannabis dependence	NO	NO
+304.33	Cannabis dependence	NO	NO
+305.20	Nondependent cannabis abuse	NO	NO
+305.21	Nondependent cannabis abuse	NO	NO
+305.22	Nondependent cannabis abuse	NO	NO
+305.23	Nondependent cannabis abuse	NO	NO
+304.20	Cocaine dependence	NO	YES
+304.21	Cocaine dependence	NO	YES
+304.22	Cocaine dependence	NO	YES
+304.23	Cocaine dependence	NO	YES
+305.60	Nondependent cocaine abuse	NO	YES
+305.61	Nondependent cocaine abuse	NO	YES
+305.62	Nondependent cocaine abuse	NO	YES
+305.63	Nondependent cocaine abuse	NO	YES
+968.5	Poisoning by cocaine	NO	YES
+E938.5	Cocaine, adverse effects	NO	YES
+292.0	Drug withdrawal	NO	NO
+292.11	Drug-induced psychotic disorder with delusions	NO	NO
+292.12	Drug-induced psychotic disorder with hallucinations	NO	NO
+292.2	Pathological drug intoxication	NO	NO
+292.81	Drug-induced delirium	NO	NO
+292.82	Drug-induced persistent dementia	NO	NO
+292.83	Drug-induced persistent amnestic disorder	NO	NO
+292.84	Drug-induced mood disorder	NO	NO
+292.85	Drug-induced sleep disorders	NO	NO
+292.89	Other drug-induced mental disorder	NO	NO
+292.9	Unspecified drug-induced mental disorder	NO	NO
+304.50	Hallucinogen dependence	NO	NO
+304.51	Hallucinogen dependence	NO	NO
+304.52	Hallucinogen dependence	NO	NO
+304.53	Hallucinogen dependence	NO	NO
+305.30	Nondependent hallucinogen abuse	NO	NO
+305.31	Nondependent hallucinogen abuse	NO	NO
+305.32	Nondependent hallucinogen abuse	NO	NO
+305.33	Nondependent hallucinogen abuse	NO	NO
+969.6	Poisoning by hallucinogens (psychodysleptics)	NO	NO
+E854.1	Accidental poisoning by hallucinogens (psychodysleptics)	NO	NO
+E939.6	Hallucinogens, adverse effects	NO	NO
+304.00	Opioid type dependence	NO	YES
+304.01	Opioid type dependence	NO	YES
+304.02	Opioid type dependence	NO	YES
+304.03	Opioid type dependence	NO	YES
+304.70	Combinations of opioids with any other	NO	YES
+304.71	Combinations of opioids with any other	NO	YES
+304.72	Combinations of opioids with any other	NO	YES
+304.73	Combinations of opioids with any other	NO	YES
+305.50	Nondependent opioid abuse	NO	YES
+305.51	Nondependent opioid abuse	NO	YES
+305.52	Nondependent opioid abuse	NO	YES
+305.53	Nondependent opioid abuse	NO	YES
+965.00	Poisoning by opium	NO	YES
+965.01	Poisoning by heroin	NO	YES
+965.02	Poisoning by methadone	NO	NO
+965.09	Poisoning by other opiates and related narcotics	NO	YES
+E850.0	Heroin poisoning	NO	YES
+E935.0	Heroin, adverse effects	NO	YES
+304.10	Sedatives, hypnotics, or anxiolytic dependence	NO	NO
+304.11	Sedatives, hypnotics, or anxiolytic dependence	NO	NO
+304.12	Sedatives, hypnotics, or anxiolytic dependence	NO	NO
+304.13	Sedatives, hypnotics, or anxiolytic dependence	NO	NO
+305.40	Nondependent sedative, hypnotic, or anxiolytic abuse	NO	NO
+305.41	Nondependent sedative, hypnotic, or anxiolytic abuse	NO	NO
+305.42	Nondependent sedative, hypnotic, or anxiolytic abuse	NO	NO
+305.43	Nondependent sedative, hypnotic, or anxiolytic abuse	NO	NO
+304.60	Other, specified drug dependence	NO	NO
+304.61	Other, specified drug dependence	NO	NO
+304.62	Other, specified drug dependence	NO	NO
+304.63	Other, specified drug dependence	NO	NO
+304.80	Combinations excluding opioids	NO	NO
+304.81	Combinations excluding opioids	NO	NO
+304.82	Combinations excluding opioids	NO	NO
+304.83	Combinations excluding opioids	NO	NO
+304.90	Unspecified drug dependence	NO	NO
+304.91	Unspecified drug dependence	NO	NO
+304.92	Unspecified drug dependence	NO	NO
+304.93	Unspecified drug dependence	NO	NO
+305.90	Other, mixed or unspecified drug abuse	NO	NO
+305.91	Other, mixed or unspecified drug abuse	NO	NO
+305.92	Other, mixed or unspecified drug abuse	NO	NO
+305.93	Other, mixed or unspecified drug abuse	NO	NO
+648.30	Drug dependence complicating pregnancy, childbirth, or the puerperium	NO	NO
+648.31	Drug dependence complicating pregnancy, childbirth, or the puerperium	NO	NO
+648.32	Drug dependence complicating pregnancy, childbirth, or the puerperium	NO	NO
+648.33	Drug dependence complicating pregnancy, childbirth, or the puerperium	NO	NO
+V654.2	Counseling, substance use	NO	NO
