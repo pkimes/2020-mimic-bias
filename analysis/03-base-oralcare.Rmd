@@ -128,7 +128,7 @@ ocrecords <- oralcare %>%
 
 ## Substance Use
 
-We also pull in patients information with 
+We also pull in patients information with substance abuse information.
 
 ```{r}
 subsabuse_rds <- file.path(bqdir, "subsabuse.rds")
@@ -317,6 +317,10 @@ fulldat <- fulldat %>%
                             ethnicity) ~ "HISPANIC",
                       TRUE ~ "OTHER")) %>%
     dplyr::mutate_at(c("gender", "ethnicity"), factor)
+
+fulldat <- fulldat %>%
+    dplyr::mutate(ethnicity = fct_relevel(ethnicity, c("WHITE", "BLACK", "ASIAN",
+                                                       "HISPANIC", "OTHER")))
 ```
 
 Count number of occurrences of NAs in data.
@@ -328,7 +332,9 @@ fulldat %>%
 ```
 
 We have NAs in many columns, including DOB, Elixhauser score and number of
-oral care events. We'll assume the NAs for oral care are zeros.
+oral care events. We'll assume the NAs for oral care are zeros - this needs to be
+clarified with Joy. This is a reasonable assumption considering these patients
+are filtered to be only those with chart events recorded.
 
 ```{r}
 fulldat <- fulldat %>%
