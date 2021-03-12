@@ -33,7 +33,7 @@ HW_HADMS AS (
   UNNEST(wt_arr) WEIGHT_MAX
 ),
 
-# calculate age using admission in time
+# calculate age as time from DOB to admission time in height/weight table
 PT_AGE AS (
   SELECT *,
     DATETIME_DIFF(INTIME, DOB, DAY) / 365.25 AS AGE
@@ -45,7 +45,7 @@ PT_AGE AS (
   USING (SUBJECT_ID)
 ),
 
-# subset to nurse notes
+# subset clinical notes to notes by nurses (RN or NP)
 NURSE_NOTES AS (
   SELECT * 
   FROM `physionet-data.mimiciii_notes.noteevents`
@@ -57,7 +57,7 @@ NURSE_NOTES AS (
   USING (CGID)
 ),
 
-# add nurse notes to patient info
+# combine nursing notes with patient info
 PT_NOTES AS (
   SELECT *
   FROM NURSE_NOTES 
@@ -66,5 +66,5 @@ PT_NOTES AS (
 )
 
 SELECT * 
-FROM PT_NOTES_CG 
+FROM PT_NOTES
 ORDER BY SUBJECT_ID, HADM_ID, CGID
